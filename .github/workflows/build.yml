@@ -1,3 +1,4 @@
+
 name: Build Guardrail APK
 
 on:
@@ -6,12 +7,12 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
 
     steps:
       - name: Checkout repository
@@ -25,9 +26,12 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: ''
 
       - name: Install Android SDK packages
         run: |
+          yes | sdkmanager --licenses || true
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-35" \
@@ -39,22 +43,29 @@ jobs:
           unzip -o guardrail_project.zip -d app_source
 
       - name: Find Android project
+        shell: bash
         run: |
-          BUILD_FILE=$(find app_source -name settings.gradle -o -name settings.gradle.kts | head -n 1)
+          BUILD_FILE=$(find app_source \
+            -type f \( \
+              -name "settings.gradle" \
+              -o -name "settings.gradle.kts" \
+            \) -print -quit)
 
           if [ -z "$BUILD_FILE" ]; then
-            echo "Android project not found!"
+            echo "ERROR: Android project not found"
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$BUILD_FILE")
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Found project: $PROJECT_DIR"
+          echo "Found Android project: $PROJECT_DIR"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build Debug APK
+        shell: bash
         run: |
           cd "$PROJECT_DIR"
 
@@ -66,15 +77,21 @@ jobs:
           fi
 
       - name: Collect APK
+        shell: bash
         run: |
           mkdir -p output
-          find "$PROJECT_DIR" -type f -name "*.apk" \
+
+          find "$PROJECT_DIR" \
+            -type f \
+            -name "*-debug.apk" \
             -exec cp {} output/ \;
 
           if ! ls output/*.apk >/dev/null 2>&1; then
-            echo "APK not generated!"
+            echo "ERROR: APK not generated"
             exit 1
           fi
+
+          ls -lh output/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -82,3 +99,4 @@ jobs:
           name: Guardrail-Measurement-APK
           path: output/*.apk
           retention-days: 30
+          if-no-files-found: error
