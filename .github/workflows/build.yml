@@ -52,14 +52,36 @@ jobs:
             \) -print -quit)
 
           if [ -z "$BUILD_FILE" ]; then
-            echo "ERROR: Android project not found"
+            echo "Android project not found"
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$BUILD_FILE")
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Found Android project: $PROJECT_DIR"
+          echo "Found: $PROJECT_DIR"
+
+      - name: Fix Java imports
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["PROJECT_DIR"])
+
+          for file in root.rglob("MainActivity.java"):
+              source = file.read_text(encoding="utf-8")
+
+              if "import android.widget.Toast;" not in source:
+                  source = source.replace(
+                      "import android.app.*;",
+                      "import android.app.*;\nimport android.widget.Toast;",
+                      1
+                  )
+
+              file.write_text(source, encoding="utf-8")
+              print("Fixed:", file)
+          PY
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -87,7 +109,7 @@ jobs:
             -exec cp {} output/ \;
 
           if ! ls output/*.apk >/dev/null 2>&1; then
-            echo "ERROR: APK not generated"
+            echo "APK not generated"
             exit 1
           fi
 
